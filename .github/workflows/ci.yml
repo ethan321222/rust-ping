@@ -121,7 +121,22 @@ jobs:
           name: bindings-${{ matrix.target }}
           path: .
 
-      # Linux 和 macOS 需要 root 权限运行 ICMP 测试
+      # macOS: 诊断环境
+      - name: macOS diagnostic
+        if: runner.os == 'macOS'
+        run: |
+          echo "=== Architecture ==="
+          uname -m
+          echo "=== Node info ==="
+          node -p "process.arch + ' ' + process.platform"
+          echo "=== .node file ==="
+          file *.node || echo "No .node files"
+          echo "=== Test system ping ==="
+          ping -c 1 127.0.0.1 || echo "System ping failed"
+          echo "=== Test system ping with sudo ==="
+          sudo ping -c 1 127.0.0.1 || echo "System ping with sudo failed"
+
+      # Linux 和 macOS: 用 sudo 运行 ICMP 测试
       - name: Run tests (Linux/macOS)
         if: runner.os != 'Windows'
         run: sudo -E env "PATH=$PATH" npm test
@@ -131,7 +146,7 @@ jobs:
         if: runner.os == 'Windows'
         run: npm test
 
-      # Linux 和 macOS 需要 root 权限运行 Rust 测试
+      # Linux 和 macOS: 用 sudo 运行 Rust 测试
       - name: Run Rust unit tests (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
