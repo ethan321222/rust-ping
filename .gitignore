@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Rust build
+target/
+
+# napi-rs generated binaries
+*.node
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI tools
+.claude/
+
+# npm
+*.tgz
+package-lock.json

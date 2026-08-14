@@ -1,0 +1,17 @@
+[package]
+name = "ping-core"
+version = "1.0.0"
+edition = "2021"
+description = "Cross-platform ICMP ping core library"
+
+[dependencies]
+socket2 = { version = "0.5", features = ["all"] }
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]

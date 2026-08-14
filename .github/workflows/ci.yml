@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ─── 构建所有平台 ─────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            node: 18
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            node: 18
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            node: 18
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            node: 18
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            node: 18
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            node: 18
+
+    runs-on: ${{ matrix.os }}
+    name: Build - ${{ matrix.target }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: npm install
+
+      # Linux musl 需要 musl-tools
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get install -y musl-tools
+
+      # Linux ARM64 交叉编译需要 cross-compiler
+      - name: Install ARM64 cross-compiler
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      # 构建
+      - name: Build native module
+        run: npx napi build --platform --release --js binding.js --target ${{ matrix.target }} --cargo-cwd crates/ping-napi
+
+      # 上传构建产物
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: "*.node"
+          if-no-files-found: error
+
+  # ─── 测试（仅当前平台）─────────────────────────────────────
+  test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+    name: Test - ${{ matrix.target }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: .
+
+      # Linux 需要配置 ping 权限
+      - name: Configure ping permissions (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl net.ipv4.ping_group_range="0 2147483647"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run Rust unit tests
+        run: |
+          cd crates/ping-core
+          cargo test
+
+  # ─── 发布（仅 tag 推送时触发）──────────────────────────────
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    name: Publish to npm
+    permissions:
+      contents: write  # 用于创建 GitHub Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm install
+
+      # 下载所有平台的构建产物
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # 把所有 .node 文件移到根目录
+      - name: Move artifacts
+        run: |
+          ls -la artifacts/
+          for dir in artifacts/bindings-*; do
+            cp "$dir"/*.node .
+          done
+          ls -la *.node
+
+      # napi prepublish：生成各平台子包
+      - name: Prepare platform packages
+        run: npx napi prepublish --skip-gh-release
+
+      # 发布所有子包 + 主包
+      - name: Publish
+        run: |
+          # 发布平台子包
+          for pkg in npm/*/; do
+            if [ -f "$pkg/package.json" ]; then
+              echo "Publishing $pkg..."
+              cd "$pkg"
+              npm publish --access public || true
+              cd ../..
+            fi
+          done
+
+          # 发布主包
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 创建 GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.node"
+          generate_release_notes: true
