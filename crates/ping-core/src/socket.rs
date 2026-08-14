@@ -42,10 +42,10 @@ impl IcmpSocket {
 
     #[cfg(target_os = "linux")]
     fn create_platform_socket() -> io::Result<Self> {
-        let (socket, has_ip_header) = platform::linux::create_icmp_socket()?;
+        let socket = platform::linux::create_icmp_socket()?;
         Ok(Self {
             inner: socket,
-            has_ip_header,
+            has_ip_header: true,
         })
     }
 
@@ -54,7 +54,7 @@ impl IcmpSocket {
         let socket = platform::macos::create_icmp_socket()?;
         Ok(Self {
             inner: socket,
-            has_ip_header: false,
+            has_ip_header: true,
         })
     }
 
@@ -115,7 +115,7 @@ mod tests {
                 #[cfg(target_os = "windows")]
                 assert!(socket.has_ip_header);
                 #[cfg(target_os = "macos")]
-                assert!(!socket.has_ip_header);
+                assert!(socket.has_ip_header);
             }
             Err(PingError::SocketCreate(msg)) => {
                 // 权限不足时跳过（CI 环境）
