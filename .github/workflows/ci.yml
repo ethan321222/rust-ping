@@ -126,10 +126,37 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo sysctl net.ipv4.ping_group_range="0 2147483647"
 
-      - name: Run tests
+      # Linux 需要给 Node 和 native module 授予 raw socket 权限
+      - name: Grant CAP_NET_RAW to Node and module (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcap2-bin
+          sudo setcap cap_net_raw+ep "$(command -v node)"
+          for f in ./*.node; do
+            [ -f "$f" ] && sudo setcap cap_net_raw+ep "$f" || true
+          done
+
+      # macOS 需要以 root 权限运行测试（ICMP raw socket 需要）
+      - name: Run tests (macOS)
+        if: runner.os == 'macOS'
+        run: sudo npm test
+
+      # Windows 和 Linux 正常运行
+      - name: Run tests (other)
+        if: runner.os != 'macOS'
         run: npm test
 
-      - name: Run Rust unit tests
+      # macOS 需要以 root 权限运行 Rust 测试
+      - name: Run Rust unit tests (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd crates/ping-core
+          sudo cargo test
+
+      # Windows 和 Linux 正常运行 Rust 测试
+      - name: Run Rust unit tests (other)
+        if: runner.os != 'macOS'
         run: |
           cd crates/ping-core
           cargo test
