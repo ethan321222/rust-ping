@@ -124,7 +124,7 @@ jobs:
       # Linux 和 macOS 需要 root 权限运行 ICMP 测试
       - name: Run tests (Linux/macOS)
         if: runner.os != 'Windows'
-        run: sudo env "PATH=$PATH" npm test
+        run: sudo -E env "PATH=$PATH" npm test
 
       # Windows 正常运行
       - name: Run tests (Windows)
@@ -136,7 +136,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd crates/ping-core
-          sudo env "PATH=$PATH" cargo test
+          sudo -E env "PATH=$PATH" cargo test
 
       # Windows 正常运行 Rust 测试
       - name: Run Rust unit tests (Windows)
