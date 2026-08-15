@@ -264,16 +264,12 @@ Comparison:
 | Platform | Minimum version | Architectures | Permissions |
 |----------|----------------|---------------|-------------|
 | Windows | 7 / Server 2008 R2+ | x64 | Administrator |
-| macOS | 10.12 Sierra+ | x64 (Intel), ARM64 (Apple Silicon) | None required |
-| Linux (glibc) | glibc 2.17+ (CentOS 7+) | x64, ARM64 | `ping_group_range` or `sudo` |
-| Linux (musl) | Alpine 3.12+ | x64 | `ping_group_range` or `sudo` |
+| macOS | 10.12 Sierra+ | x64 (Intel), ARM64 (Apple Silicon) | Root (`sudo`) |
+| Linux (glibc) | glibc 2.17+ (CentOS 7+) | x64, ARM64 | Root or `CAP_NET_RAW` |
+| Linux (musl) | Alpine 3.12+ | x64 | Root or `CAP_NET_RAW` |
 
-**Linux permissions:**
+**Permissions note:** rust-ping uses raw ICMP sockets (`SOCK_RAW`) on all platforms for reliable identifier matching. This requires elevated privileges:
 ```bash
-# Option 1: Set ping group range (recommended, persistent)
-sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
-
-# Option 2: Run with sudo
 sudo node app.js
 ```
 

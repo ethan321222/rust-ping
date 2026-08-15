@@ -1,26 +1,26 @@
-# 协作开发指南
+# Contributing Guide
 
-本文档面向 rust-ping 的协作开发者，涵盖日常开发、测试、构建和发布流程。
+This guide covers the development workflow for rust-ping — building, testing, and publishing.
 
-## 环境准备
+## Prerequisites
 
-### 必需工具
+### Required Tools
 
-| 工具 | 版本要求 | 用途 |
-|------|---------|------|
-| Node.js | >= 16 | JS 运行时 |
-| Rust | stable (latest) | 编译原生模块 |
-| @napi-rs/cli | ^2.18.0 | 构建 .node 文件 |
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Node.js | >= 14 | JS runtime |
+| Rust | stable (latest) | Compile native modules |
+| @napi-rs/cli | ^2.18.0 | Build .node binaries |
 
-### 平台额外要求
+### Platform-Specific Requirements
 
-| 平台 | 要求 |
-|------|------|
-| Windows | 管理员权限运行（ICMP raw socket 需要） |
-| Linux | `sysctl net.ipv4.ping_group_range="0 2147483647"` 或 `sudo` |
-| macOS | 无额外要求 |
+| Platform | Requirement |
+|----------|-------------|
+| Windows | Run as Administrator (ICMP raw sockets require elevated privileges) |
+| Linux | `sysctl net.ipv4.ping_group_range="0 2147483647"` or run with `sudo` |
+| macOS | No additional setup needed |
 
-### 首次克隆
+### Getting Started
 
 ```bash
 git clone <repo-url>
@@ -28,99 +28,96 @@ cd rust-ping
 npm install
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 rust-ping/
-├── index.js                 # JS 封装层（Session 类，不要手动修改 binding.js）
-├── index.mjs                # ESM 入口
-├── index.d.ts               # TypeScript 类型（手动维护）
-├── binding.js               # ⚠️ napi-rs 自动生成的平台加载器
+├── index.js                 # JS wrapper (Session class — do not edit binding.js by hand)
+├── index.mjs                # ESM entry point
+├── index.d.ts               # TypeScript types (manually maintained)
+├── binding.js               # ⚠️ Auto-generated platform loader (napi-rs)
 ├── package.json
-├── Cargo.toml               # Rust workspace 根
+├── Cargo.toml               # Rust workspace root
 ├── crates/
-│   ├── ping-core/           # 纯 Rust 逻辑（ICMP、socket、超时）
+│   ├── ping-core/           # Pure Rust logic (ICMP, socket, timeout)
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── icmp.rs      # ICMP 包构造/解析
-│   │       ├── socket.rs    # 跨平台 socket
-│   │       ├── session.rs   # PingSession 核心引擎
-│   │       ├── error.rs     # 错误类型
-│   │       ├── utils.rs     # 通用工具（checksum、DNS 等）
-│   │       └── platform/    # 平台特化代码
-│   └── ping-napi/           # napi-rs 绑定（薄层，调用 ping-core）
+│   │       ├── icmp.rs      # ICMP packet construction/parsing
+│   │       ├── socket.rs    # Cross-platform socket abstraction
+│   │       ├── session.rs   # PingSession core engine
+│   │       ├── error.rs     # Error types
+│   │       ├── utils.rs     # Utilities (checksum, DNS, etc.)
+│   │       └── platform/    # Platform-specific code
+│   └── ping-napi/           # napi-rs bindings (thin layer over ping-core)
 │       └── src/
 │           └── lib.rs
-├── __test__/                # 集成测试
-├── example/                 # 使用示例
+├── __test__/                # Integration tests
+├── example/                 # Usage examples
 ```
 
-## 日常开发流程
+## Development Workflow
 
-### 1. 修改 Rust 代码
+### 1. Editing Rust Code
 
 ```bash
-# 编辑 crates/ping-core/src/ 或 crates/ping-napi/src/ 下的文件
-# 然后编译：
-npm run build:debug    # 开发用，编译快，不优化
-npm run build          # release 模式，用于最终测试
+# After editing files in crates/ping-core/src/ or crates/ping-napi/src/:
+npm run build:debug    # Fast, unoptimized — for development
+npm run build          # Release mode — for final testing
 ```
 
-### 2. 修改 JS 封装层
+### 2. Editing the JS Wrapper
 
-直接编辑 `index.js`，无需重新编译 Rust。
+Edit `index.js` directly. No Rust recompilation needed.
 
-### 3. 运行测试
+### 3. Running Tests
 
 ```bash
-npm test               # 运行集成测试（需要管理员/网络权限）
+npm test               # Integration tests (requires admin/network access)
 ```
 
-### 4. 手动验证
+### 4. Manual Verification
 
 ```bash
-node example/02-promise.js      # 单次 ping
-node example/04-batch.js        # 并发多目标
-node example/05-concurrent-100.js  # 压测
-node example/06-timeout-retry.js   # 超时重试
+node example/02-promise.js         # Single ping
+node example/04-batch.js           # Concurrent multi-target
+node example/05-concurrent-100.js  # Stress test
+node example/06-timeout-retry.js   # Timeout and retry
 ```
 
-## 构建说明
+## Building
 
-### 命令解析
+### Commands
 
 ```bash
-# debug 构建（快，适合开发迭代）
+# Debug build (fast, no optimizations — use during development)
 npm run build:debug
-# 实际执行: napi build --platform --js binding.js --cargo-cwd crates/ping-napi
+# Runs: napi build --platform --js binding.js --dts binding.d.ts --cargo-cwd crates/ping-napi
 
-# release 构建（慢，有优化，用于发布）
+# Release build (slower, optimized — use before publishing)
 npm run build
-# 实际执行: napi build --platform --release --js binding.js --cargo-cwd crates/ping-napi
+# Runs: napi build --platform --release --js binding.js --dts binding.d.ts --cargo-cwd crates/ping-napi
 ```
 
-### 文件分层设计
+### File Layout
 
-napi-rs 默认会生成一个平台加载器到 `index.js`，这会和我们的 JS 封装层冲突。主流 napi-rs 项目（如 `@swc/core`、`@napi-rs/canvas`）的做法是把**自动生成的加载器和手写封装分离到不同文件**。
-
-我们通过 `--js binding.js` 参数让 napi-rs 输出到 `binding.js` 而非 `index.js`：
+By default, napi-rs generates a platform loader into `index.js`, which would conflict with our hand-written wrapper. Following the pattern used by `@swc/core` and `@napi-rs/canvas`, we separate the generated loader from the wrapper using `--js binding.js`:
 
 ```
-binding.js   ← napi-rs 自动生成（平台加载器，每次 build 会覆盖，这是正常的）
-index.js     ← 手写封装层（Session 类），require('./binding') 获取原生绑定
-index.mjs    ← ESM 入口
+binding.js   ← Auto-generated by napi-rs (platform loader, overwritten on each build)
+index.js     ← Hand-written wrapper (Session class), requires('./binding') for native bindings
+index.mjs    ← ESM entry point
 ```
 
-**这个设计保证了：**
-- `npm run build` 只会覆盖 `binding.js`（它本来就是自动生成的，覆盖无害）
-- `index.js` 永远不会被构建命令触碰
-- 开发者无需记忆任何"注意事项"，构建流程天然安全
+This guarantees:
+- `npm run build` only overwrites `binding.js` (which is generated anyway)
+- `index.js` is never touched by the build process
+- No footguns — the build is safe by design
 
-**⚠️ 不要直接用 `npx napi build --platform ...`（不带 `--js binding.js`），那会覆盖 `index.js`。始终用 `npm run build`。**
+**⚠️ Never run `npx napi build --platform ...` without `--js binding.js` — it will overwrite `index.js`. Always use `npm run build`.**
 
-### 构建产物
+### Build Artifacts
 
-构建成功后根目录会出现平台对应的 `.node` 文件：
+A successful build produces a `.node` file in the project root:
 
 ```
 ping.win32-x64-msvc.node      # Windows x64
@@ -128,123 +125,126 @@ ping.darwin-arm64.node         # macOS Apple Silicon
 ping.linux-x64-gnu.node        # Linux x64
 ```
 
-这些文件已在 `.gitignore` 中，不要提交到 git。
+These are `.gitignore`d and should not be committed.
 
-## 测试规范
+## Testing
 
-### 运行测试
+### Running Tests
 
 ```bash
 npm test
 ```
 
-测试需要网络访问和 ICMP 权限。在 Windows 上请用**管理员终端**运行。
+Tests require network access and ICMP permissions. On Windows, use an **elevated terminal**.
 
-### 测试覆盖范围
+### Test Coverage
 
-当前测试 (`__test__/ping.test.js`) 覆盖：
+The test suite (`__test__/ping.test.js`) covers:
 
-- Callback 风格（pingHost）
-- Promise 单次 / 多次
-- Batch 并发
-- 超时和错误处理
-- Session 生命周期（close 事件、reject pending）
-- 并发压测（10 路）
+- Callback style (pingHost)
+- Promise-based single/multiple pings
+- Batch concurrency
+- Timeout and error handling
+- Session lifecycle (close event, rejecting pending requests)
+- Concurrency stress test (10 parallel)
 
-### 新增功能时
+### When Adding Features
 
-1. 在 `__test__/ping.test.js` 中添加对应测试用例
-2. 如果是新的调用模式，在 `example/` 中添加示例文件
-3. 更新 `index.d.ts` 中的类型定义
+1. Add test cases in `__test__/ping.test.js`
+2. Add example scripts in `example/` for new usage patterns
+3. Update type definitions in `index.d.ts`
 
-### Rust 单元测试
+### Rust Unit Tests
 
 ```bash
 cd crates/ping-core
 cargo test
 ```
 
-ping-core 有独立的单元测试（ICMP 包构造、checksum 计算、解析逻辑），不依赖网络。
+ping-core has standalone unit tests (ICMP packet construction, checksum, parsing) that don't require network access.
 
-## 发布流程
+## Publishing
 
-### 前置检查
+### Pre-flight Checks
 
 ```bash
-# 1. 确保代码编译通过（零 warning）
+# 1. Verify a clean release build (zero warnings)
 npm run build
 
-# 2. 运行测试
+# 2. Run tests
 npm test
 
-# 3. Rust 单元测试
+# 3. Rust unit tests
 cd crates/ping-core && cargo test && cd ../..
 
-# 4. 检查打包内容
+# 4. Inspect package contents
 npm pack --dry-run
 ```
 
-### 版本号
+### Versioning
 
-主包和所有平台子包版本号必须一致。修改版本时：
-
-```bash
-# 更新 package.json 中的 version
-# 同时更新 optionalDependencies 中所有子包的版本号
-```
-
-### CI 发布（推荐）
-
-正式发布应通过 CI 完成（GitHub Actions 矩阵构建所有平台），而非本地手动发布。参考 `PUBLISH.md` 中的 CI 配置。
-
-### 本地发布（仅测试用）
+The main package and all platform packages must share the same version. A `version` hook in package.json handles this automatically:
 
 ```bash
-# 只能发布当前平台的子包
-npx napi prepublish --skip-gh-release
-# 把 Rust 写的 Node 原生插件，按当前版本同步各平台子包的版本号、写好 optionalDependencies、并发布这些平台包到 npm，但不创建 GitHub Release。主要用于非 GitHub Actions 环境下的 napi-rs 项目发布。
-npm publish
+npm version patch   # or minor / major
+# Syncs optionalDependencies versions, commits, and tags in one step
+git push origin main --tags
 ```
 
-## 常见问题
+### CI Publishing (Recommended)
 
-### Q: 编译报错 `linker 'link.exe' not found`
+Production releases should go through CI (GitHub Actions matrix build across all platforms). See `PUBLISH.md` for the full workflow.
 
-Windows 需要安装 Visual Studio Build Tools，确保勾选 "C++ 桌面开发" 工作负载。
+### Local Publishing (Testing Only)
 
-### Q: 运行时报错 `Access denied` 或 `Permission denied`
+```bash
+# You can only publish the current platform's package locally
+npx napi create-npm-dir -t .
+cp ping.<platform>.node npm/<platform>/
+npm publish npm/<platform>/ --dry-run   # Verify first
+npm publish --dry-run                   # Main package
+```
 
-ICMP raw socket 需要权限：
-- Windows: 用管理员终端
-- Linux: 配置 `ping_group_range` 或用 `sudo`
+See the "Local Verification" section in `PUBLISH.md` for the full procedure.
 
-### Q: `npm test` 部分用例超时失败
+## FAQ
 
-网络环境影响，某些外部 IP（如 `1.1.1.1`）在特定网络可能不通。本地超时不代表代码有 bug，检查是否是网络问题。
+### Q: Build fails with `linker 'link.exe' not found`
 
+Install Visual Studio Build Tools and make sure the "Desktop development with C++" workload is selected.
 
-### Q: 修改了 Rust 代码但行为没变
+### Q: `Access denied` or `Permission denied` at runtime
 
-确认执行了 `npm run build:debug` 或 `npm run build` 重新编译。JS 层缓存的是文件路径，不会自动感知 Rust 代码变化。
+ICMP raw sockets require elevated privileges:
+- Windows: Use an Administrator terminal
+- Linux: Set `ping_group_range` or run with `sudo`
 
-## 代码规范
+### Q: Some tests time out
 
-### Rust 侧
+This is usually a network issue, not a code bug. Certain external IPs (e.g. `1.1.1.1`) may be unreachable on some networks. Check connectivity first.
 
-- 通用工具逻辑放 `utils.rs`
-- 平台特化代码放 `platform/` 目录，通过 `cfg` 条件编译
-- 错误统一用 `thiserror` 定义在 `error.rs`
-- ping-napi 是薄层，只做类型转换和 ThreadsafeFunction 桥接，业务逻辑在 ping-core
+### Q: Changed Rust code but behavior didn't change
 
-### JS 侧
+You need to recompile — run `npm run build:debug` or `npm run build`. The JS layer loads the `.node` binary from disk; it doesn't detect Rust source changes.
 
-- `index.js` 是唯一对外封装层，提供 `session`（默认实例）、`createSession`、`Session`、`DefaultSession`
-- `binding.js` 由 napi-rs 生成，**不要手动修改**
-- 错误类型（`PingTimeoutError`、`DestinationUnreachableError`）定义在 `index.js` 中并导出
-- 类型定义手动维护在 `index.d.ts`（napi-rs 自动生成的 Native 类型 + 手写的 JS 层类型）
+## Code Style
 
-### 命名约定
+### Rust
 
-- Rust: snake_case（标准 Rust 风格）
-- JS: camelCase（标准 JS 风格）
-- 文件名: kebab-case（平台文件除外）
+- Shared utilities go in `utils.rs`
+- Platform-specific code goes in `platform/`, gated by `cfg` attributes
+- Errors are defined with `thiserror` in `error.rs`
+- ping-napi is a thin layer — type conversion and ThreadsafeFunction bridging only; business logic belongs in ping-core
+
+### JavaScript
+
+- `index.js` is the sole public API surface, exporting `session` (default instance), `createSession`, `Session`, and `DefaultSession`
+- `binding.js` is generated by napi-rs — **do not edit manually**
+- Error types (`PingTimeoutError`, `DestinationUnreachableError`) are defined and exported from `index.js`
+- Type definitions in `index.d.ts` are maintained by hand (napi-rs generated native types + hand-written JS layer types)
+
+### Naming Conventions
+
+- Rust: `snake_case`
+- JavaScript: `camelCase`
+- Filenames: `kebab-case` (except platform-specific files)

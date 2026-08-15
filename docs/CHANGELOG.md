@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.1 — macOS ICMP Socket 修复
+## v1.0.2 — 统一 SOCK_RAW 修复 macOS ICMP 超时
 
 ### 问题
 

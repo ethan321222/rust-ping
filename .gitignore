@@ -22,4 +22,6 @@ Thumbs.db
 
 # npm
 *.tgz
+npm/
+artifacts/
 package-lock.json

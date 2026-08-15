@@ -99,7 +99,7 @@ rust-ping                          ← 主包，纯 JS，~20KB
 用户在 macOS ARM 执行 npm install rust-ping：
   → 下载 rust-ping（主包，20KB）
   → 下载 rust-ping-darwin-arm64（平台包，1.2MB）
-  → 跳过其他 7 个平台包
+  → 跳过其他 5 个平台包
   → 总下载量：~1.2MB
 ```
 
@@ -123,7 +123,8 @@ rust-ping/
     "index.js",
     "index.mjs",
     "index.d.ts",
-    "binding.js"
+    "binding.js",
+    "binding.d.ts"
   ]
 }
 ```
@@ -192,8 +193,8 @@ napi-rs 的 `napi build --platform` 命令默认行为：
 ```json
 {
   "scripts": {
-    "build": "napi build --platform --release --js binding.js --cargo-cwd crates/ping-napi",
-    "build:debug": "napi build --platform --js binding.js --cargo-cwd crates/ping-napi"
+    "build": "napi build --platform --release --js binding.js --dts binding.d.ts --cargo-cwd crates/ping-napi",
+    "build:debug": "napi build --platform --js binding.js --dts binding.d.ts --cargo-cwd crates/ping-napi"
   }
 }
 ```
@@ -302,11 +303,25 @@ matrix:
 
 ```bash
 # 1. 更新 package.json 版本号
-# 2. 提交并打 tag
+npm version patch  # 或 minor / major，自动修改 package.json 并创建 commit
+
+# 2. 打 tag
 git tag v1.0.0
-git push origin v1.0.0
-# 3. CI 自动：Build → Test → Publish 到 npm
+
+# 3. 推送代码和 tag
+git push origin main --tags
+
+# 4. CI 自动：Build → Test → Publish 到 npm
 ```
+
+**`git push origin main --tags` vs `git push origin v1.0.0` 的区别：**
+
+| 命令 | 推送内容 | 适用场景 |
+|------|---------|---------|
+| `git push origin main --tags` | 代码 + 所有本地 tag | 推荐：一次性把代码和 tag 都推上去，CI 能拿到最新代码 |
+| `git push origin v1.0.0` | 仅这一个 tag | 风险：如果忘了先 `git push` 代码，CI checkout 到的是旧代码，发布的是旧版本 |
+
+推荐始终用 `git push origin main --tags`，避免代码和 tag 不同步。
 
 ### 需要配置的 Secret
 
@@ -326,12 +341,31 @@ CI 发布**不需要你的 npm 密码**，用的是 Access Token（专为自动�
 3. Name 填 `NPM_TOKEN`，Value 粘贴 token
 4. Save
 
-CI 中通过环境变量传给 npm，全程不接触密码：
+CI 中通过手动写 `.npmrc` 注入 token：
 
 ```yaml
 env:
-  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
+
+```bash
+echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+```
+
+> **推荐改进：** 更主流的做法是配合 `setup-node` 的 `registry-url` 参数，使用 `NODE_AUTH_TOKEN` 环境变量，无需手动写 `.npmrc`：
+>
+> ```yaml
+> - uses: actions/setup-node@v7
+>   with:
+>     node-version: 24
+>     registry-url: https://registry.npmjs.org
+>
+> - run: npm publish --access public
+>   env:
+>     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+> ```
+>
+> 这种方式由 `setup-node` 自动生成 `.npmrc`，更简洁且不易出错。
 
 **安全说明：**
 - Token 只在 GitHub Actions 的加密环境中使用，日志中不会打印
@@ -396,7 +430,15 @@ rust-ping-linux-arm64-gnu@1.0.0
 }
 ```
 
-napi-rs CLI 的 `napi prepublish` + `napi publish` 命令会自动处理版本同步。
+CI 通过 `napi create-npm-dir` + `napi artifacts` + `sed` 手动同步版本号，而非使用 `napi prepublish` / `napi publish` 一站式命令，以获得更细粒度的控制（容错、npmrc 配置、provenance 等）。
+
+> **补充：`napi prepublish` / `napi publish`**
+>
+> 这是 napi-rs CLI 提供的一站式发布命令：
+> - `napi prepublish`：创建 `npm/<platform>/` 目录 + 从 `artifacts/` 移动 `.node` 文件（由各平台 build job 编译后通过 GitHub Actions artifacts 下载得到）+ 自动同步版本号，一条命令完成三步
+> - `napi publish`：遍历 `npm/*/` 逐个 `npm publish` 子包，再发布主包
+>
+> 等价于我们 CI 中手写的 `create-npm-dir` → `artifacts` → `sed` → `for` 循环发布的全部逻辑，只是封装成了黑盒。
 
 ## 对比其他方案
 
@@ -590,4 +632,123 @@ Electron 默认把 `node_modules` 打包成 asar 归档（一种只读压缩包�
 | Electron 升级时 | 可能需要重新编译 | 无需任何操作 |
 | 打包体积 | 类似 | 类似 |
 | 稳定性 | ABI 可能断裂 | N-API 保证稳定 |
+
+# 本地验证发布流程
+
+在推送 CI 之前，可以在本地验证发布逻辑是否正确。
+
+## 方式一：简单验证（快速检查）
+
+验证 `napi create-npm-dir` 能否正常创建目录结构：
+
+```bash
+# 1. 创建 npm 目录结构
+npx napi create-npm-dir -t .
+
+# 2. 直接拷贝 .node 文件到对应目录
+cp ping.win32-x64-msvc.node npm/win32-x64-msvc/
+
+# 3. 验证目录结构和文件
+ls -la npm/*/
+cat npm/win32-x64-msvc/package.json
+
+# 4. dry-run 发布
+npm publish npm/win32-x64-msvc/ --dry-run
+
+# 5. 清理
+rm -rf npm/
+```
+
+## 方式二：模拟 CI 完整流程
+
+完整模拟 CI 的 build → artifacts → publish 流程：
+
+```bash
+# 1. 构建当前平台的 .node 文件
+npm run build
+
+# 2. 模拟 CI 的 artifacts 目录结构
+mkdir -p artifacts/bindings-x86_64-pc-windows-msvc
+cp ping.win32-x64-msvc.node artifacts/bindings-x86_64-pc-windows-msvc/
+
+# 3. 创建 npm 目录结构
+npx napi create-npm-dir -t .
+
+# 4. 移动 .node 文件到对应目录
+npx napi artifacts
+
+# 5. 同步平台子包版本号（与主包一致）
+VERSION=$(node -p "require('./package.json').version")
+for pkg in npm/*/package.json; do
+  sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$pkg"
+done
+
+# 6. 验证目录结构
+ls -la npm/*/
+cat npm/win32-x64-msvc/package.json
+
+# 7. dry-run 发布平台子包
+npm publish npm/win32-x64-msvc/ --dry-run
+
+# 8. dry-run 发布主包
+npm publish --dry-run
+
+# 9. 清理
+rm -rf npm/ artifacts/
+```
+
+**关键命令说明：**
+
+| 命令 | 作用 |
+|------|------|
+| `npx napi create-npm-dir -t .` | 创建 `npm/<platform>/` 目录和 `package.json` |
+| `npx napi artifacts` | 从 `artifacts/` 复制 `.node` 文件到 `npm/<platform>/` |
+| `npm publish --dry-run` | 模拟发布，检查打包内容但不真正上传 |
+
+## Artifacts 机制：跨 Job 传递文件
+
+CI 的 build 和 publish 是**不同的 job**，运行在**不同的机器**上。artifacts 是 GitHub Actions 的临时存储，用于在不同 job 之间传递文件。
+
+```
+Job 1: Build (Windows)    → 生成 ping.win32-x64-msvc.node → 上传到 GitHub
+Job 2: Build (macOS)      → 生成 ping.darwin-arm64.node   → 上传到 GitHub
+Job 3: Build (Linux)      → 生成 ping.linux-x64-gnu.node  → 上传到 GitHub
+          ↓
+Job 4: Publish (Ubuntu)   → 下载所有 artifacts → 发布到 npm
+```
+
+**上传（Build job）：**
+```yaml
+- name: Upload artifact
+  uses: actions/upload-artifact@v7
+  with:
+    name: bindings-x86_64-pc-windows-msvc
+    path: "*.node"
+```
+
+**下载（Publish job）：**
+```yaml
+- name: Download all artifacts
+  uses: actions/download-artifact@v8
+  with:
+    path: artifacts  # 下载到 artifacts/ 目录
+```
+
+下载后的目录结构：
+```
+artifacts/
+├── bindings-x86_64-pc-windows-msvc/
+│   └── ping.win32-x64-msvc.node
+├── bindings-aarch64-apple-darwin/
+│   └── ping.darwin-arm64.node
+└── bindings-x86_64-unknown-linux-gnu/
+    └── ping.linux-x64-gnu.node
+```
+
+**Publish job 的处理流程：**
+1. `npx napi create-npm-dir -t .` — 创建 `npm/<platform>/` 目录和 `package.json`
+2. 同步平台子包版本号 — 将主包版本写入各 `npm/*/package.json`
+3. `npx napi artifacts` — 从 `artifacts/` 复制 `.node` 文件到 `npm/<platform>/`
+4. `npm publish npm/*/` — 发布平台子包
+5. `npm publish` — 发布主包
 

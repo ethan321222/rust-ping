@@ -263,16 +263,12 @@ try {
 | 平台 | 最低版本 | 架构 | 权限要求 |
 |------|---------|------|---------|
 | Windows | 7 / Server 2008 R2+ | x64 | 管理员权限 |
-| macOS | 10.12 Sierra+ | x64 (Intel), ARM64 (Apple Silicon) | 无需额外权限 |
-| Linux (glibc) | glibc 2.17+ (CentOS 7+) | x64, ARM64 | `ping_group_range` 或 `sudo` |
-| Linux (musl) | Alpine 3.12+ | x64 | `ping_group_range` 或 `sudo` |
+| macOS | 10.12 Sierra+ | x64 (Intel), ARM64 (Apple Silicon) | Root (`sudo`) |
+| Linux (glibc) | glibc 2.17+ (CentOS 7+) | x64, ARM64 | Root 或 `CAP_NET_RAW` |
+| Linux (musl) | Alpine 3.12+ | x64 | Root 或 `CAP_NET_RAW` |
 
-**Linux 权限配置：**
+**权限说明：** rust-ping 在所有平台使用原始 ICMP socket (`SOCK_RAW`) 以保证 identifier 匹配可靠，需要提升权限：
 ```bash
-# 方式一：配置 ping 组范围（推荐，永久生效）
-sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
-
-# 方式二：用 sudo 运行
 sudo node app.js
 ```
 
